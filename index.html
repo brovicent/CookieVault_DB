@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cookie Vault</title>
+    <!-- Tailwind CSS untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome untuk ikon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a',
+                        cardBg: '#1e293b',
+                        accent: '#38bdf8'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-slate-200 font-sans min-h-screen p-6">
+
+    <div class="max-w-5xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-accent mb-2">
+                <i class="fa-solid fa-cookie-bite mr-2"></i> Cookie Vault
+            </h1>
+            <p class="text-slate-400">Simpan dan kelola data cookie Anda dengan aman (Format .txt)</p>
+        </header>
+
+        <!-- Area Upload -->
+        <div class="bg-cardBg border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-accent transition-colors duration-300 mb-10">
+            <i class="fa-solid fa-cloud-arrow-up text-5xl text-slate-400 mb-4"></i>
+            <h3 class="text-xl font-semibold mb-2">Unggah File Cookie</h3>
+            <p class="text-slate-400 mb-6 text-sm">Pilih satu atau beberapa file .txt sekaligus</p>
+            
+            <label class="bg-accent hover:bg-sky-400 text-slate-900 font-bold py-3 px-6 rounded-lg cursor-pointer transition-colors shadow-lg">
+                <i class="fa-solid fa-folder-open mr-2"></i> Pilih File (.txt)
+                <input type="file" id="fileInput" accept=".txt" multiple class="hidden">
+            </label>
+        </div>
+
+        <!-- Statistik & Header Bagian -->
+        <div id="sectionHeader" class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+            <!-- Teks ini akan di-render secara dinamis oleh JavaScript -->
+        </div>
+
+        <!-- Kolom Pencarian -->
+        <div class="mb-8 relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+            </div>
+            <input type="text" id="searchInput" placeholder="Cari berdasarkan nama file atau kategori..." class="block w-full pl-10 pr-3 py-3 border border-slate-600 rounded-xl leading-5 bg-cardBg text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent sm:text-sm transition duration-150 ease-in-out shadow-sm">
+        </div>
+
+        <!-- Daftar Cookie -->
+        <div id="cookieGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Kartu data akan muncul di sini via JavaScript -->
+        </div>
+        
+        <div id="emptyState" class="hidden text-center py-20">
+            <i class="fa-solid fa-box-open text-6xl text-slate-600 mb-4"></i>
+            <p class="text-slate-400 text-lg">Belum ada data cookie yang tersimpan.</p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 🔴 PASTE URL GOOGLE APPS SCRIPT ANDA DI SINI
+        // ==========================================
+        const API_URL = 'https://script.google.com/macros/library/d/1q5CGvS2LRaRRVb7B1LfOXy468TkvMVuTCX41LCt1XSilTm5NrZ5JdWdZ/2';
+        
+        let cookiesData = [];
+        let currentCategory = null;
+        
+        const fileInput = document.getElementById('fileInput');
+        const cookieGrid = document.getElementById('cookieGrid');
+        const emptyState = document.getElementById('emptyState');
+        const sectionHeader = document.getElementById('sectionHeader');
+        const searchInput = document.getElementById('searchInput');
+
+        // Fungsi Deteksi Kategori & Ikon
+        function getCategoryData(content, filename, catName = null) {
+            // Jika memuat dari database dan sudah ada nama kategori, langsung format tampilannya
+            const str = catName ? catName.toLowerCase() : (content + ' ' + filename).toLowerCase();
+            
+            if (str.includes('netflix')) return { name: 'Netflix', icon: 'fa-brands fa-neos', color: 'text-red-500', bg: 'bg-red-500/10' };
+            if (str.includes('youtube')) return { name: 'YouTube', icon: 'fa-brands fa-youtube', color: 'text-red-600', bg: 'bg-red-600/10' };
+            if (str.includes('facebook') || str.includes('.facebook.com')) return { name: 'Facebook', icon: 'fa-brands fa-facebook', color: 'text-blue-500', bg: 'bg-blue-500/10' };
+            if (str.includes('google') || str.includes('gmail')) return { name: 'Google', icon: 'fa-brands fa-google', color: 'text-yellow-500', bg: 'bg-yellow-500/10' };
+            if (str.includes('spotify')) return { name: 'Spotify', icon: 'fa-brands fa-spotify', color: 'text-green-500', bg: 'bg-green-500/10' };
+            
+            // Default
+            return { name: 'Umum', icon: 'fa-solid fa-cookie', color: 'text-accent', bg: 'bg-accent/10' };
+        }
+
+        // AMBIL DATA DARI DATABASE (READ)
+        async function fetchCookies() {
+            sectionHeader.innerHTML = `<h2 class="text-xl font-semibold animate-pulse text-accent"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Menghubungkan ke Database...</h2>`;
+            cookieGrid.innerHTML = '';
+            emptyState.classList.add('hidden');
+
+            try {
+                // Jika API_URL belum diisi, kita cegah error
+                if(API_URL.includes('MASUKKAN_URL')) throw new Error("URL API belum dimasukkan di dalam kode.");
+
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                
+                // Format ulang data dari database agar sesuai dengan struktur frontend
+                cookiesData = data.map(item => ({
+                    id: item.id,
+                    filename: item.filename,
+                    content: item.content,
+                    cat: getCategoryData(item.content, item.filename, item.catName),
+                    date: item.date
+                }));
+                
+                renderData();
+            } catch (error) {
+                sectionHeader.innerHTML = `<h2 class="text-xl font-semibold text-red-500"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Database Error</h2>`;
+                emptyState.classList.remove('hidden');
+                emptyState.innerHTML = `<i class="fa-solid fa-plug-circle-xmark text-6xl text-red-500/50 mb-4"></i><p class="text-slate-400 text-lg">Gagal menghubungkan: ${error.message}</p>`;
+            }
+        }
+
+        // HAPUS DATA DARI DATABASE (DELETE)
+        async function deleteCookie(id) {
+            if (confirm('Yakin ingin menghapus data ini dari cloud?')) {
+                const btn = event.currentTarget;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // Loading state
+                
+                try {
+                    await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'delete', id: id })
+                    });
+                    await fetchCookies(); // Refresh data
+                } catch (error) {
+                    alert('Gagal menghapus data dari server.');
+                    fetchCookies();
+                }
+            }
+        }
+
+        // Salin Isi Teks
+        function copyContent(text) {
+            const tempTextArea = document.createElement("textarea");
+            tempTextArea.value = text;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempTextArea);
+            alert("Isi cookie berhasil disalin!");
+        }
+
+        // Format Tanggal
+        function formatDate(date) {
+            return new Intl.DateTimeFormat('id-ID', {
+                day: '2-digit', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            }).format(new Date(date));
+        }
+
+        // --- FUNGSI NAVIGASI FOLDER ---
+        function viewCategory(catName) {
+            currentCategory = catName;
+            searchInput.value = ''; 
+            renderData();
+        }
+
+        function goBack() {
+            currentCategory = null;
+            renderData();
+        }
+
+        // Render Antarmuka Dinamis
+        function renderData(searchTerm = '') {
+            cookieGrid.innerHTML = '';
+            
+            // 1. PENCARIAN
+            if (searchTerm !== '') {
+                const searchStr = searchTerm.toLowerCase();
+                const filteredData = cookiesData.filter(cookie => 
+                    cookie.filename.toLowerCase().includes(searchStr) || 
+                    cookie.cat.name.toLowerCase().includes(searchStr)
+                );
+
+                sectionHeader.innerHTML = `
+                    <h2 class="text-2xl font-semibold"><i class="fa-solid fa-search mr-2"></i> Hasil Pencarian</h2>
+                    <span class="bg-slate-700 px-3 py-1 rounded-full text-sm font-medium">${filteredData.length} Ditemukan</span>
+                `;
+
+                if (filteredData.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    emptyState.innerHTML = `<i class="fa-solid fa-search text-6xl text-slate-600 mb-4"></i><p class="text-slate-400 text-lg">Tidak ada hasil yang cocok untuk "${searchTerm}".</p>`;
+                } else {
+                    emptyState.classList.add('hidden');
+                    renderCards(filteredData);
+                }
+                return; 
+            }
+
+            // 2. HALAMAN UTAMA (Folder)
+            if (currentCategory === null) {
+                sectionHeader.innerHTML = `
+                    <h2 class="text-2xl font-semibold"><i class="fa-solid fa-folder-tree mr-2"></i> Kategori Data</h2>
+                    <span class="bg-slate-700 px-3 py-1 rounded-full text-sm font-medium">Total: ${cookiesData.length} File</span>
+                `;
+
+                if (cookiesData.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    emptyState.innerHTML = `<i class="fa-solid fa-box-open text-6xl text-slate-600 mb-4"></i><p class="text-slate-400 text-lg">Belum ada data cookie yang tersimpan.</p>`;
+                    return;
+                }
+
+                emptyState.classList.add('hidden');
+                
+                const categories = {};
+                cookiesData.forEach(item => {
+                    const catName = item.cat.name;
+                    if (!categories[catName]) {
+                        categories[catName] = { info: item.cat, count: 0 };
+                    }
+                    categories[catName].count++;
+                });
+
+                Object.keys(categories).forEach(catName => {
+                    const cat = categories[catName];
+                    const card = document.createElement('div');
+                    card.setAttribute('onclick', `viewCategory('${catName}')`);
+                    card.className = 'cursor-pointer bg-cardBg rounded-xl p-6 shadow-lg border border-slate-700 flex items-center justify-between transition duration-300 hover:border-accent hover:shadow-xl hover:-translate-y-1';
+                    card.innerHTML = `
+                        <div class="flex items-center gap-5">
+                            <div class="w-14 h-14 rounded-full flex items-center justify-center text-3xl ${cat.info.bg} ${cat.info.color}">
+                                <i class="${cat.info.icon}"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-xl">${catName}</h3>
+                                <p class="text-sm text-slate-400 mt-1">${cat.count} Data Tersimpan</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-slate-500 text-xl"></i>
+                    `;
+                    cookieGrid.appendChild(card);
+                });
+            } 
+            // 3. DALAM KATEGORI
+            else {
+                const categoryItems = cookiesData.filter(item => item.cat.name === currentCategory);
+                if (categoryItems.length === 0) {
+                    goBack();
+                    return;
+                }
+
+                sectionHeader.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <button onclick="goBack()" class="bg-slate-700 hover:bg-slate-600 w-10 h-10 rounded-lg flex items-center justify-center transition-colors shadow-md" title="Kembali ke Kategori">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <h2 class="text-2xl font-semibold"><i class="fa-regular fa-folder-open mr-2"></i> ${currentCategory}</h2>
+                    </div>
+                    <span class="bg-slate-700 px-3 py-1 rounded-full text-sm font-medium">${categoryItems.length} File</span>
+                `;
+                
+                emptyState.classList.add('hidden');
+                renderCards(categoryItems);
+            }
+        }
+
+        // Render Kartu File
+        function renderCards(dataArray) {
+            dataArray.forEach(cookie => {
+                const card = document.createElement('div');
+                card.className = 'bg-cardBg rounded-xl p-5 shadow-lg border border-slate-700 flex flex-col transition duration-300 hover:border-slate-500 hover:shadow-xl hover:-translate-y-1';
+                const safeContent = cookie.content.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${cookie.cat.bg} ${cookie.cat.color}">
+                            <i class="${cookie.cat.icon}"></i>
+                        </div>
+                        <div class="flex-1 overflow-hidden">
+                            <h3 class="font-bold text-lg truncate" title="${cookie.filename}">${cookie.filename}</h3>
+                            <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${cookie.cat.bg} ${cookie.cat.color} border border-current">
+                                ${cookie.cat.name}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-700/50 flex items-center justify-between">
+                        <div class="text-xs text-slate-400">
+                            <i class="fa-regular fa-calendar mr-1"></i> ${cookie.date}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="copyContent('${safeContent}')" class="w-8 h-8 rounded bg-slate-700 hover:bg-accent hover:text-slate-900 flex items-center justify-center transition-colors tooltip" title="Salin Isi">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                            <button onclick="deleteCookie('${cookie.id}')" class="w-8 h-8 rounded bg-slate-700 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors" title="Hapus">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                cookieGrid.appendChild(card);
+            });
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            renderData(e.target.value);
+        });
+
+        // TAMBAH DATA KE DATABASE (CREATE)
+        fileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            // UI Feedback sedang upload
+            const uploadLabel = e.target.parentElement;
+            const originalHTML = uploadLabel.innerHTML;
+            uploadLabel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Mengunggah ke Server...';
+            uploadLabel.style.pointerEvents = 'none';
+
+            try {
+                for (let file of files) {
+                    const text = await file.text();
+                    const category = getCategoryData(text, file.name);
+                    
+                    const payload = {
+                        action: 'insert',
+                        id: 'UID-' + Date.now() + Math.random().toString(36).substring(2, 6),
+                        filename: file.name,
+                        content: text,
+                        catName: category.name, // Kirim nama kategorinya saja untuk dihemat
+                        date: formatDate(new Date())
+                    };
+                    
+                    // POST ke Google Sheets
+                    await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                }
+            } catch (error) {
+                alert('Gagal mengunggah file ke server!');
+            }
+            
+            // Reset UI
+            uploadLabel.innerHTML = originalHTML;
+            uploadLabel.style.pointerEvents = 'auto';
+            fileInput.value = '';
+            
+            // Refresh data dari server
+            currentCategory = null; 
+            searchInput.value = '';
+            fetchCookies(); 
+        });
+
+        // Panggil data pertama kali saat web dibuka
+        fetchCookies();
+    </script>
+</body>
+</html>
