@@ -212,20 +212,50 @@
 
         // Salin Isi Teks menggunakan ID (Menghindari masalah HTML terpotong)
         function copyContent(id) {
-            const cookie = cookiesData.find(c => c.id === id);
-            if (!cookie) {
-                showToast('Data tidak ditemukan', true);
+            // Pastikan perbandingan tipe datanya aman (String vs String)
+            const cookie = cookiesData.find(c => String(c.id) === String(id));
+            
+            if (!cookie || !cookie.content) {
+                showToast('Data tidak ditemukan atau kosong', true);
                 return;
             }
 
+            // Membuat elemen textarea sementara
             const tempTextArea = document.createElement("textarea");
             tempTextArea.value = cookie.content;
-            document.body.appendChild(tempTextArea);
-            tempTextArea.select();
-            document.execCommand("copy");
-            document.body.removeChild(tempTextArea);
             
-            showToast("Isi cookie berhasil disalin!");
+            // Trik CSS: Sembunyikan dari layar agar web tidak melompat ke bawah (scroll jumping)
+            tempTextArea.style.position = "fixed";
+            tempTextArea.style.left = "-999999px";
+            tempTextArea.style.top = "-999999px";
+            document.body.appendChild(tempTextArea);
+            
+            // Fokus dan block semua teks (wajib untuk execCommand)
+            tempTextArea.focus();
+            tempTextArea.select();
+            tempTextArea.setSelectionRange(0, 9999999); // Kompatibilitas untuk perangkat Mobile
+            
+            try {
+                // Coba salin ke clipboard
+                const successful = document.execCommand("copy");
+                if (successful) {
+                    showToast("Isi cookie berhasil disalin!");
+                } else {
+                    // Fallback alternatif jika browser terlalu ketat
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(cookie.content)
+                            .then(() => showToast("Isi cookie berhasil disalin!"))
+                            .catch(() => showToast("Gagal menyalin. Diblokir browser.", true));
+                    } else {
+                        showToast("Browser tidak mendukung salin otomatis.", true);
+                    }
+                }
+            } catch (err) {
+                showToast("Terjadi kesalahan sistem saat menyalin.", true);
+            }
+            
+            // Hapus kembali elemen sementara agar memori bersih
+            document.body.removeChild(tempTextArea);
         }
 
         function formatDate(date) {
